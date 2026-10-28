@@ -58,7 +58,7 @@ class Filters(ModalScreen):
 
     def compose(self) -> ComposeResult:
         with Vertical():
-            yield Static('Filters — blank means all; Enter applies, Esc cancels')
+            yield Static('Status: blank hides closed; closed shows only closed; all shows every status. Enter applies, Esc cancels')
             for name, value in zip(('status', 'assignee', 'priority'), self.values):
                 yield Static(name.title() + (' (use Unassigned for nobody)' if name == 'assignee' else ''))
                 yield Input(value, id='filter-' + name)
@@ -97,7 +97,8 @@ class Help(ModalScreen):
                          '?: this help\nq: quit outside text entry\n\n'
                          'Project selector: Enter, arrows, Enter.\n'
                          'Filters: Tab between fields; Enter applies.\n'
-                         'Clear search or filter fields to show all tickets.\n'
+                         'Blank status hides closed tickets; set status to closed or all to include them.\n'
+                         'Clear search, assignee, or priority filters to show more tickets.\n'
                          'Details include recorded actors; assignment is not an audit trail.\n'
                          'Activity shows observed changes since launch; startup is a baseline.', markup=False)
 
@@ -236,7 +237,11 @@ class DashboardApp(App):
             status, assignee, priority = self.filters
             visible = [(key, state, issue) for key, state, issue in all_issues
                        if (not search or search in ' '.join((str(state.project.path), state.project.name, json.dumps(issue, ensure_ascii=False, default=str))).casefold())
-                       and (not status or str(issue.get('status', '')).casefold() == status)
+                       and (
+                           status == 'all'
+                           or (str(issue.get('status', '')).casefold() == status if status
+                               else str(issue.get('status', '')).casefold() != 'closed')
+                       )
                        and (not assignee or str(issue.get('assignee') or 'Unassigned').casefold() == assignee)
                        and (not priority or str(issue.get('priority', '')).casefold() == priority.removeprefix('p'))]
             agents = Counter(str(issue.get('assignee') or 'Unassigned') for _, _, issue in visible)
@@ -278,7 +283,7 @@ class DashboardApp(App):
                 if version != self._detail_version:
                     self.load_detail(self._detail_identity, preserve_scroll=True)
             elif not self._rows:
-                self.query_one('#detail-text', Static).update('No matching tickets. Clear search/filters, or wait for the first snapshot.')
+                self.query_one('#detail-text', Static).update('No matching tickets. Set status to closed or all to include closed tickets, or clear search/filters.')
             activity = ['Observed changes since launch (startup is baseline; not an audit log)']
             for change in reversed(self.monitor.changes):
                 if not projects.value or change.project_key == projects.value:
@@ -293,7 +298,7 @@ class DashboardApp(App):
             if not self.monitor.states:
                 health.insert(0, 'No projects discovered yet. Waiting for scan; check configured roots/projects.')
             if self.filters != ('', '', ''):
-                health.insert(0, f'Filters: status={status or "all"}, assignee={assignee or "all"}, priority={priority or "all"} — {len(visible)} visible')
+                health.insert(0, f'Filters: status={status or "excluding closed"}, assignee={assignee or "all"}, priority={priority or "all"} — {len(visible)} visible')
             if self.size.width < 90 or self.size.height < 25:
                 health.insert(0, 'Small terminal: Tab to panes, arrows/PageDown scroll; enlarge for side-by-side detail.')
             self.query_one('#health-text', Static).update('\n'.join(health))

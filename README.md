@@ -9,16 +9,16 @@ Requires Python 3.11+, [uv](https://docs.astral.sh/uv/getting-started/installati
 Install the tagged release from GitHub (requires Git):
 
 ```sh
-uv tool install --force 'git+https://github.com/msriv/beads-dashboard.git@v0.1.1'
+uv tool install --force 'git+https://github.com/msriv/beads-dashboard.git@v0.1.2'
 beads-dashboard
 ```
 
 On macOS, install uv first with `brew install uv` if needed. If the installed command is not found, run `uv tool update-shell`, then open a new terminal. Check Beads with `bd --version`; install it using its upstream instructions if missing. The tagged-source command was verified with a fresh online installation.
 
-Alternatively, install the packaged wheel without Git. Wheel, source archive, and checksums are available on the [v0.1.1 release page](https://github.com/msriv/beads-dashboard/releases/tag/v0.1.1):
+Alternatively, install the packaged wheel without Git. Wheel, source archive, and checksums are available on the [v0.1.2 release page](https://github.com/msriv/beads-dashboard/releases/tag/v0.1.2):
 
 ```sh
-uv tool install --force https://github.com/msriv/beads-dashboard/releases/download/v0.1.1/beads_dashboard-0.1.1-py3-none-any.whl
+uv tool install --force https://github.com/msriv/beads-dashboard/releases/download/v0.1.2/beads_dashboard-0.1.2-py3-none-any.whl
 ```
 
 If uv stalls on GitHub's wheel download redirect, use the tagged-source command above. Both installs provide the `beads-dashboard` command from any folder; `--force` replaces an existing installation. To remove it, run `uv tool uninstall beads-dashboard`.
@@ -69,12 +69,14 @@ Click a ticket row once to select it and show its details. Keyboard navigation r
 | `Enter` | Open the selected ticket's full details; apply filters when in the filter form |
 | `Esc` | Cancel a dialog or return to the ticket table |
 | `/` | Focus search; typing immediately filters tickets |
-| `f` | Filter by status, assignee, and priority; blank means all |
+| `f` | Filter by status, assignee, and priority; blank status hides closed tickets |
 | `?` | Open keyboard help |
 | `q` | Quit outside text entry |
 | `PageUp` / `PageDown`, `Home` / `End` | Scroll the focused pane |
 
-In the project selector, press `Enter`, choose with arrows, and press `Enter` again. In filters, use `Tab` between fields; `Unassigned` selects tickets without an assignee, and priorities accept `1` or `P1`. Clear search/filter fields to show everything again. Printable shortcuts do not interrupt search, filter fields, or selector type-ahead.
+Closed tickets are hidden from the ticket list by default, including when searching or filtering by assignee or priority. To see them, press `f` and set status to `closed` (closed only) or `all` (every status). Clear the status field to hide closed tickets again. Counts and agent summaries follow the visible tickets.
+
+In the project selector, press `Enter`, choose with arrows, and press `Enter` again. In filters, use `Tab` between fields; `Unassigned` selects tickets without an assignee, and priorities accept `1` or `P1`. Blank assignee and priority fields match all values. Printable shortcuts do not interrupt search, filter fields, or selector type-ahead.
 
 Refresh preserves input, focus, filters, and the selected ticket where it still exists. Details include descriptions, notes, acceptance criteria, labels, comments with recorded authors, and dependencies. Descriptions and comments render Markdown headings, emphasis, lists, and fenced code; ticket and section headings use distinct styling and spacing. Small terminals stack the ticket and detail panes; use `Tab` and scrolling, or enlarge the window for a side-by-side view.
 
@@ -96,7 +98,7 @@ Print a single read-only JSON snapshot without starting a terminal UI:
 beads-dashboard --project /path/to/project --once
 ```
 
-Exit code is 1 for scan/read errors and 0 for a valid snapshot, including an empty result with a visible diagnostic. Each project includes its source identity, path, native ticket fields, last-success time, and any error. `_ready` and `_blocked` are dashboard annotations from Beads' own queries.
+Exit code is 1 for scan/read errors and 0 for a valid snapshot, including an empty result with a visible diagnostic. This diagnostic snapshot includes closed tickets. Each project includes its source identity, path, native ticket fields, last-success time, and any error. `_ready` and `_blocked` are dashboard annotations from Beads' own queries.
 
 ```sh
 uv run python -m unittest discover -s tests -v

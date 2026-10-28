@@ -218,7 +218,7 @@ class DashboardTests(unittest.IsolatedAsyncioTestCase):
         self.monitor.changes.append(SimpleNamespace(at=datetime.now(timezone.utc), project_key='one', project_name='One', issue_id='bd-2', title='Changed', kind='updated', fields=('status',)))
         async with app.run_test(size=(120, 40)) as pilot:
             summary = str(app.query_one('#summary', Static).render())
-            for label in ('Ready 1', 'In progress 1', 'Blocked 1', 'Closed 1', 'Unassigned'):
+            for label in ('Ready 1', 'In progress 1', 'Blocked 1', 'Closed 0', 'Unassigned'):
                 self.assertIn(label, summary)
             health = str(app.query_one('#health-text', Static).render())
             self.assertIn('Cannot poll', health)
@@ -320,18 +320,64 @@ class DashboardTests(unittest.IsolatedAsyncioTestCase):
     async def test_summary_and_agents_follow_filters_and_search(self):
         app = self.app([project_state('one', 'One', [issue(), issue('bd-2', status='closed', _ready=False)])])
         async with app.run_test() as pilot:
+            table = app.query_one('#issues', DataTable)
+            self.assertEqual(table.row_count, 1)
+            self.assertNotIn('bd-2', [str(row) for row in table.rows])
+            summary = str(app.query_one('#summary', Static).render())
+            self.assertIn('Closed 0', summary)
+            self.assertIn('Agents: Unassigned 1', summary)
+            app.filters = ('', 'unassigned', '1')
+            app.refresh_view()
+            self.assertEqual(table.row_count, 1)
+            app.filters = ('', '', '')
+            app.refresh_view()
+            await pilot.press('/', 'b', 'd', '-', '2')
+            self.assertEqual(table.row_count, 0)
+            app.query_one('#search', Input).value = ''
+            app.refresh_view()
+            await pilot.press('escape')
             await pilot.press('f', 'c', 'l', 'o', 's', 'e', 'd', 'enter')
             await pilot.pause()
-            self.assertEqual(app.query_one('#issues', DataTable).row_count, 1)
+            self.assertEqual(table.row_count, 1)
+            self.assertEqual(app.selected_identity, ('one', 'bd-2'))
             summary = str(app.query_one('#summary', Static).render())
             for expected in ('Ready 0', 'Closed 1', 'Unassigned 1'):
                 self.assertIn(expected, summary)
             await pilot.press('/', 'z', 'z', 'z')
-            self.assertEqual(app.query_one('#issues', DataTable).row_count, 0)
+            self.assertEqual(table.row_count, 0)
             summary = str(app.query_one('#summary', Static).render())
-            self.assertIn('Ready 0', summary)
-            self.assertIn('Closed 0', summary)
-            self.assertIn('Agents: none', summary)
+            for expected in ('Ready 0', 'Closed 0', 'Agents: none'):
+                self.assertIn(expected, summary)
+            app.query_one('#search', Input).value = ''
+            app.refresh_view()
+            app.filters = ('all', '', '')
+            app.refresh_view()
+            self.assertEqual(table.row_count, 2)
+            app.filters = ('', '', '')
+            app.refresh_view()
+            self.assertEqual(table.row_count, 1)
+
+    async def test_live_close_removes_selected_ticket_and_clears_its_detail(self):
+        app = self.app([project_state('one', 'One', [issue(), issue('bd-2')])])
+        async with app.run_test() as pilot:
+            await pilot.press('enter')
+            await pilot.pause()
+            self.assertEqual(app._detail_identity, ('one', 'bd-1'))
+            self.monitor.states['one'].issues['bd-1']['status'] = 'closed'
+            self.monitor.on_update()
+            await pilot.pause()
+            self.assertEqual(app.query_one('#issues', DataTable).row_count, 1)
+            self.assertEqual(app.selected_identity, ('one', 'bd-2'))
+            self.assertIsNone(app._detail_identity)
+            self.assertNotIn('bd-1', detail_rendered(app))
+
+            app.filters = ('closed', '', '')
+            app.refresh_view()
+            self.assertEqual(app.query_one('#issues', DataTable).row_count, 1)
+            self.assertEqual(app.selected_identity, ('one', 'bd-1'))
+            app.filters = ('all', '', '')
+            app.refresh_view()
+            self.assertEqual(app.query_one('#issues', DataTable).row_count, 2)
 
     async def test_background_refresh_preserves_horizontal_table_scroll(self):
         app = self.app([project_state('one', 'One', [issue(title='Long ticket title ' * 20), issue('bd-2')])])
