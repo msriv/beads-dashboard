@@ -6,22 +6,22 @@ A keyboard-operated terminal dashboard for monitoring agent work across local Be
 
 Requires Python 3.11+, [uv](https://docs.astral.sh/uv/getting-started/installation/), and [Beads](https://github.com/steveyegge/beads) (`bd`) on `PATH`. Tested with Beads 1.3.2 and embedded Dolt on macOS. Textual supplies the terminal interface.
 
-Install the packaged release:
+Install the tagged release from GitHub (requires Git):
 
 ```sh
-uv tool install https://github.com/msriv/beads-dashboard/releases/download/v0.1.0/beads_dashboard-0.1.0-py3-none-any.whl
+uv tool install --force 'git+https://github.com/msriv/beads-dashboard.git@v0.1.0'
 beads-dashboard
 ```
 
-On macOS, install uv first with `brew install uv` if needed. If the installed command is not found, run `uv tool update-shell`, then open a new terminal. Check Beads with `bd --version`; install it using its upstream instructions if missing. No Git clone is required for the release wheel.
+On macOS, install uv first with `brew install uv` if needed. If the installed command is not found, run `uv tool update-shell`, then open a new terminal. Check Beads with `bd --version`; install it using its upstream instructions if missing. The tagged-source command was verified with a fresh online installation.
 
-Alternatively, install from the tagged source (requires Git):
+Alternatively, install the packaged wheel without Git. Wheel, source archive, and checksums are available on the [v0.1.0 release page](https://github.com/msriv/beads-dashboard/releases/tag/v0.1.0):
 
 ```sh
-uv tool install 'git+https://github.com/msriv/beads-dashboard.git@v0.1.0'
+uv tool install --force https://github.com/msriv/beads-dashboard/releases/download/v0.1.0/beads_dashboard-0.1.0-py3-none-any.whl
 ```
 
-Both installs provide the `beads-dashboard` command from any folder. To replace an existing installation with this release, repeat the chosen install command with `--force`. To remove it, run `uv tool uninstall beads-dashboard`.
+If uv stalls on GitHub's wheel download redirect, use the tagged-source command above. Both installs provide the `beads-dashboard` command from any folder; `--force` replaces an existing installation. To remove it, run `uv tool uninstall beads-dashboard`.
 
 ## Development
 
