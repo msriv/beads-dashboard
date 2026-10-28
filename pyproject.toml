@@ -1,0 +1,24 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "beads-dashboard"
+version = "0.1.0"
+description = "A keyboard-operated live terminal view of local Beads projects"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = ["textual>=8.2,<9"]
+
+[project.urls]
+Repository = "https://github.com/msriv/beads-dashboard"
+Issues = "https://github.com/msriv/beads-dashboard/issues"
+
+[project.scripts]
+beads-dashboard = "beads_dashboard.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/beads_dashboard"]
+
+[tool.hatch.build.targets.sdist]
+include = ["/src", "/tests", "/README.md", "/pyproject.toml", "/uv.lock"]
