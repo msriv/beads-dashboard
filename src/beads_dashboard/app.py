@@ -3,8 +3,10 @@
 from collections import Counter
 from datetime import datetime, timezone
 import json
+import re
 from typing import TYPE_CHECKING
 
+from rich.markdown import Markdown
 from rich.text import Text
 from textual import on, work
 from textual.app import App, ComposeResult
@@ -17,6 +19,25 @@ from textual.widgets import Button, DataTable, Footer, Input, Select, Static, Te
 
 if TYPE_CHECKING:
     from .monitor import Monitor
+
+
+def markdown_literal(value):
+    return re.sub(r'([\\`*_{}\[\]<>()#+\-.!|=~&])', r'\\\1', str(value))
+
+
+class TicketTable(DataTable):
+    def on_click(self, event):
+        row = event.style.meta.get('row', -1)
+        column = event.style.meta.get('column', -1)
+        if row < 0 or column < 0:
+            return
+        # A ticket opens on its first click; Textual otherwise requires a second click.
+        event.prevent_default()
+        event.stop()
+        if event.style.meta.get('out_of_bounds') or row >= self.row_count:
+            return
+        self.move_cursor(row=row, column=column)
+        self.post_message(self.RowSelected(self, row, self.ordered_rows[row].key))
 
 
 class ScrollPane(VerticalScroll):
@@ -136,7 +157,7 @@ class DashboardApp(App):
         with ScrollPane(id='summary-pane'):
             yield Static('', id='summary', markup=False)
         with Horizontal(id='body'):
-            yield DataTable(id='issues', cursor_type='row', zebra_stripes=True)
+            yield TicketTable(id='issues', cursor_type='row', zebra_stripes=True)
             with ScrollPane(id='detail'):
                 yield Static('Select a ticket and press Enter for full detail.', id='detail-text', markup=False)
         with ScrollPane(id='activity'):
@@ -242,7 +263,7 @@ class DashboardApp(App):
                     for column, cell in enumerate(cells):
                         table.update_cell_at(Coordinate(row, column), cell, update_width=True)
                 else:
-                    table.add_row(*cells)
+                    table.add_row(*cells, key=json.dumps((key, str(issue['id']))))
             index = self._rows.index(previous) if previous in self._rows else 0
             self.selected_identity = self._rows[index] if self._rows else None
             if self._rows:
@@ -282,11 +303,17 @@ class DashboardApp(App):
     @on(DataTable.RowHighlighted, '#issues')
     def row_highlighted(self, event):
         table = self.query_one('#issues', DataTable)
-        if self._rows and table.cursor_row < len(self._rows):
+        if self._rows and event.row_key == table.ordered_rows[table.cursor_row].key:
             self.selected_identity = self._rows[table.cursor_row]
 
     @on(DataTable.RowSelected, '#issues')
-    def row_selected(self):
+    def row_selected(self, event):
+        table = self.query_one('#issues', DataTable)
+        if event.row_key not in table.rows:
+            return
+        index = table.get_row_index(event.row_key)
+        self.selected_identity = self._rows[index]
+        table.move_cursor(row=index)
         self.action_details()
 
     def action_search(self):
@@ -335,7 +362,8 @@ class DashboardApp(App):
             self.query_one('#detail-text', Static).update(heading + 'Loading full detail…')
         try:
             detail = await self.monitor.client.detail(state.project, ticket)
-            content = heading + '\n' + self.detail_text(detail)
+            content = Markdown(f'{markdown_literal(state.project.name)} — {markdown_literal(state.project.path)}\n\n'
+                               f'**{markdown_literal(ticket)}**\n\n' + self.detail_text(detail), hyperlinks=False)
         except Exception as error:
             content = heading + '\nDetail unavailable: ' + str(error)
         if self.selected_identity == identity:
@@ -347,14 +375,14 @@ class DashboardApp(App):
         """Keep native fields visible without interpreting assignment as attribution."""
         def value_text(value):
             if isinstance(value, dict):
-                return '\n'.join(f'{key.replace("_", " ").capitalize()}: {value_text(item)}' for key, item in value.items())
+                return '\n\n'.join(f'{markdown_literal(key.replace("_", " ").capitalize())}: {value_text(item)}' for key, item in value.items())
             if isinstance(value, list):
-                return '\n'.join(value_text(item) for item in value)
-            return str(value)
+                return '\n\n'.join(value_text(item) for item in value)
+            return markdown_literal(value)
 
-        sections = [str(detail.get('title', '(Untitled)')),
-                    f'Status: {detail.get("status", "unknown")}   Priority: P{detail.get("priority", "?")}',
-                    f'Assignee: {detail.get("assignee") or "Unassigned"}',
+        sections = ['# ' + markdown_literal(detail.get('title', '(Untitled)')),
+                    f'Status: {markdown_literal(detail.get("status", "unknown"))}   Priority: P{markdown_literal(detail.get("priority", "?"))}',
+                    f'Assignee: {markdown_literal(detail.get("assignee") or "Unassigned")}',
                     'Recorded actors below come from Beads; assignment does not identify the last actor.']
         handled = {'id', 'title', 'status', 'priority', 'assignee', '_ready', '_blocked'}
         for key, label in [('description', 'Description'), ('notes', 'Notes'),
@@ -362,7 +390,8 @@ class DashboardApp(App):
                            ('labels', 'Labels')]:
             handled.add(key)
             if detail.get(key):
-                sections.append(label + '\n' + value_text(detail[key]))
+                body = detail[key] if key != 'labels' and isinstance(detail[key], str) else value_text(detail[key])
+                sections.append('## ' + label + '\n\n' + body)
         for key, label in [('comments', 'Comments'), ('dependencies', 'Dependencies'), ('dependents', 'Dependents')]:
             handled.add(key)
             records = detail.get(key)
@@ -371,19 +400,19 @@ class DashboardApp(App):
             lines = []
             for record in records if isinstance(records, list) else [records]:
                 if not isinstance(record, dict):
-                    lines.append(str(record))
+                    lines.append(markdown_literal(record))
                 elif key == 'comments':
                     actor = record.get('author') or record.get('created_by') or 'Actor not recorded'
                     at = record.get('created_at') or record.get('timestamp') or ''
                     text = record.get('text') or record.get('body') or record.get('comment') or ''
-                    lines.append(f'{actor}{" — " + str(at) if at else ""}\n{text}')
+                    lines.append(f'{markdown_literal(actor)}{" — " + markdown_literal(at) if at else ""}\n\n{text}')
                     extra = {field: value for field, value in record.items() if field not in {'author', 'created_by', 'created_at', 'timestamp', 'text', 'body', 'comment'}}
                     if extra:
                         lines.append(value_text(extra))
                 else:
                     ticket = record.get('id') or record.get('depends_on_id') or record.get('issue_id') or ''
-                    lines.append(str(ticket) + '\n' + value_text({field: value for field, value in record.items() if field not in {'id', 'depends_on_id', 'issue_id'}}))
-            sections.append(label + '\n' + '\n\n'.join(lines))
-        sections.extend(key.replace('_', ' ').capitalize() + '\n' + value_text(value)
+                    lines.append(markdown_literal(ticket) + '\n\n' + value_text({field: value for field, value in record.items() if field not in {'id', 'depends_on_id', 'issue_id'}}))
+            sections.append('## ' + label + '\n\n' + '\n\n'.join(lines))
+        sections.extend('## ' + markdown_literal(key.replace('_', ' ').capitalize()) + '\n\n' + value_text(value)
                         for key, value in detail.items() if key not in handled and not key.startswith('_') and value is not None)
         return '\n\n'.join(sections)

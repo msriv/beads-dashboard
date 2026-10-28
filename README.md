@@ -9,16 +9,16 @@ Requires Python 3.11+, [uv](https://docs.astral.sh/uv/getting-started/installati
 Install the tagged release from GitHub (requires Git):
 
 ```sh
-uv tool install --force 'git+https://github.com/msriv/beads-dashboard.git@v0.1.0'
+uv tool install --force 'git+https://github.com/msriv/beads-dashboard.git@v0.1.1'
 beads-dashboard
 ```
 
 On macOS, install uv first with `brew install uv` if needed. If the installed command is not found, run `uv tool update-shell`, then open a new terminal. Check Beads with `bd --version`; install it using its upstream instructions if missing. The tagged-source command was verified with a fresh online installation.
 
-Alternatively, install the packaged wheel without Git. Wheel, source archive, and checksums are available on the [v0.1.0 release page](https://github.com/msriv/beads-dashboard/releases/tag/v0.1.0):
+Alternatively, install the packaged wheel without Git. Wheel, source archive, and checksums are available on the [v0.1.1 release page](https://github.com/msriv/beads-dashboard/releases/tag/v0.1.1):
 
 ```sh
-uv tool install --force https://github.com/msriv/beads-dashboard/releases/download/v0.1.0/beads_dashboard-0.1.0-py3-none-any.whl
+uv tool install --force https://github.com/msriv/beads-dashboard/releases/download/v0.1.1/beads_dashboard-0.1.1-py3-none-any.whl
 ```
 
 If uv stalls on GitHub's wheel download redirect, use the tagged-source command above. Both installs provide the `beads-dashboard` command from any folder; `--force` replaces an existing installation. To remove it, run `uv tool uninstall beads-dashboard`.
@@ -59,6 +59,8 @@ Discovery skips VCS internals, database files, dependency trees, and common buil
 
 ## Keyboard
 
+Click a ticket row once to select it and show its details. Keyboard navigation remains available for every action.
+
 | Keys | Action |
 | --- | --- |
 | `Tab` / `Shift+Tab` | Move between the project selector, search, summaries, ticket table, details, activity, and health |
@@ -74,7 +76,7 @@ Discovery skips VCS internals, database files, dependency trees, and common buil
 
 In the project selector, press `Enter`, choose with arrows, and press `Enter` again. In filters, use `Tab` between fields; `Unassigned` selects tickets without an assignee, and priorities accept `1` or `P1`. Clear search/filter fields to show everything again. Printable shortcuts do not interrupt search, filter fields, or selector type-ahead.
 
-Refresh preserves input, focus, filters, and the selected ticket where it still exists. Details include descriptions, notes, acceptance criteria, labels, comments with recorded authors, and dependencies. Small terminals stack the ticket and detail panes; use `Tab` and scrolling, or enlarge the window for a side-by-side view.
+Refresh preserves input, focus, filters, and the selected ticket where it still exists. Details include descriptions, notes, acceptance criteria, labels, comments with recorded authors, and dependencies. Descriptions and comments render Markdown headings, emphasis, lists, and fenced code; ticket and section headings use distinct styling and spacing. Small terminals stack the ticket and detail panes; use `Tab` and scrolling, or enlarge the window for a side-by-side view.
 
 ## What live means
 

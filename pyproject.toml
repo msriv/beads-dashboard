@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "beads-dashboard"
-version = "0.1.0"
+version = "0.1.1"
 description = "A keyboard-operated live terminal view of local Beads projects"
 readme = "README.md"
 requires-python = ">=3.11"

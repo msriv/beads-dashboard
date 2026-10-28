@@ -5,12 +5,21 @@ from pathlib import Path
 from types import SimpleNamespace
 import unittest
 
+from rich.console import Console
+from rich.markdown import Markdown
 from textual.widgets import DataTable, Input, Select, Static
 
 try:
     from beads_dashboard.app import DashboardApp
 except ImportError:
     DashboardApp = None
+
+
+def detail_rendered(app):
+    content = app.query_one('#detail-text', Static).content
+    if isinstance(content, str):
+        return content
+    return ''.join(segment.text for segment in Console(width=100).render(content))
 
 
 def project_state(key, name, issues):
@@ -54,6 +63,83 @@ class DashboardTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(DashboardApp, 'DashboardApp must provide the keyboard dashboard')
         self.monitor = FakeMonitor(states if states is not None else [project_state('one', 'Same', [issue(), issue('bd-2', title='Second', assignee='Ada', status='in_progress')])])
         return DashboardApp(self.monitor)
+
+    async def test_single_mouse_click_opens_exact_ticket_and_survives_filtered_refresh(self):
+        app = self.app([project_state('one', 'Same', [issue()]),
+                        project_state('two', 'Same', [issue(), issue('bd-2', status='closed')])])
+        async with app.run_test(size=(120, 40)) as pilot:
+            table = app.query_one('#issues', DataTable)
+            self.assertTrue(await pilot.click(table, offset=(2, 2)))
+            await pilot.pause()
+            self.assertEqual(app.selected_identity, ('two', 'bd-1'))
+            self.assertEqual(app._detail_identity, ('two', 'bd-1'))
+            self.assertIn('/projects/two', detail_rendered(app))
+            self.assertIs(app.focused, app.query_one('#detail'))
+            calls = self.monitor.detail_calls
+            await pilot.click(table, offset=(2, 2))
+            await pilot.pause()
+            self.assertEqual(self.monitor.detail_calls, calls + 1)
+            app.filters = ('closed', '', '')
+            app.refresh_view()
+            await pilot.pause()
+            await pilot.click(table, offset=(2, 1))
+            await pilot.pause()
+            self.assertEqual(app.selected_identity, ('two', 'bd-2'))
+            self.assertEqual(app._detail_identity, ('two', 'bd-2'))
+            self.assertIn('bd-2', detail_rendered(app))
+            self.monitor.states['two'].issues['bd-0'] = issue('bd-0', status='closed')
+            self.monitor.on_update()
+            await pilot.pause()
+            self.assertEqual(app.selected_identity, ('two', 'bd-2'))
+            self.assertEqual(table.cursor_row, 1)
+            self.assertEqual(app._detail_identity, ('two', 'bd-2'))
+            calls = self.monitor.detail_calls
+            await pilot.click(table, offset=(2, 0))
+            await pilot.click(table, offset=(2, 6))
+            await pilot.pause()
+            self.assertEqual(self.monitor.detail_calls, calls)
+            self.assertEqual(app.selected_identity, ('two', 'bd-2'))
+
+    async def test_stale_row_selection_after_rebuild_does_not_open_another_ticket(self):
+        app = self.app()
+        async with app.run_test() as pilot:
+            table = app.query_one('#issues', DataTable)
+            removed_key = table.ordered_rows[1].key
+            del self.monitor.states['one'].issues['bd-2']
+            self.monitor.on_update()
+            await pilot.pause()
+            table.post_message(DataTable.RowSelected(table, 1, removed_key))
+            await pilot.pause()
+            self.assertEqual(app.selected_identity, ('one', 'bd-1'))
+            self.assertEqual(self.monitor.detail_calls, 0)
+
+    async def test_detail_renders_markdown_styles_and_keeps_metadata_literal(self):
+        app = self.app()
+        self.monitor.detail_values = issue(
+            title='Title **literal** [bold]tags[/bold] &copy;',
+            assignee='**Ada**', labels=['*label*'],
+            description='## Goal\n\n**Strong text** and [bold]literal[/bold]\n\n- First item\n- Second item\n\n```python\nprint(42)\n```\n\n[Reference](https://example.com)\n\n<script>not executed</script>',
+            notes='**Note emphasis**',
+            comments=[{'author': '*Bea*', 'text': '**Comment emphasis**'}],
+            dependencies=[{'id': 'dep_1', 'title': '**dependency**'}])
+        async with app.run_test(size=(120, 40)) as pilot:
+            await pilot.press('enter')
+            await pilot.pause()
+            content = app.query_one('#detail-text', Static).content
+            self.assertIsInstance(content, Markdown)
+            segments = list(Console(width=100).render(content))
+            text = ''.join(segment.text for segment in segments)
+            for literal in ('Title **literal** [bold]tags[/bold] &copy;', '**Ada**', '*label*', '*Bea*',
+                            '**dependency**', 'dep_1', '[bold]literal[/bold]'):
+                self.assertIn(literal, text)
+            for emphasized in ('Strong text', 'Note emphasis', 'Comment emphasis'):
+                self.assertTrue(any(emphasized in segment.text and segment.style.bold for segment in segments))
+            self.assertTrue(any('Description' in segment.text and segment.style and
+                                (segment.style.bold or segment.style.underline or segment.style.color) for segment in segments))
+            self.assertTrue(any('•' in segment.text for segment in segments))
+            self.assertTrue(any('print' in segment.text and segment.style and segment.style.bgcolor for segment in segments))
+            self.assertIn('Reference (https://example.com)', text)
+            self.assertFalse(any(segment.style and segment.style.link for segment in segments))
 
     async def test_search_printable_bindings_and_escape(self):
         app = self.app()
@@ -113,8 +199,8 @@ class DashboardTests(unittest.IsolatedAsyncioTestCase):
         async with app.run_test(size=(120, 40)) as pilot:
             await pilot.press('enter')
             await pilot.pause()
-            detail = str(app.query_one('#detail-text', Static).render())
-            for expected in ('Description\nLong [bold]description[/bold]', 'Notes\nNotes', 'Acceptance criteria\nAcceptance', 'Comments\nBea', 'Dependencies\ndep-1', '/projects/one'):
+            detail = detail_rendered(app)
+            for expected in ('Description', 'Long [bold]description[/bold]', 'Notes', 'Acceptance criteria', 'Acceptance', 'Comments', 'Bea', 'Dependencies', 'dep-1', '/projects/one'):
                 self.assertIn(expected, detail)
             self.assertIs(app.focused, app.query_one('#detail'))
             await pilot.press('j', 'j', 'pagedown')
@@ -123,7 +209,7 @@ class DashboardTests(unittest.IsolatedAsyncioTestCase):
             self.monitor.detail_error = 'database unavailable'
             await pilot.press('enter')
             await pilot.pause()
-            self.assertIn('database unavailable', str(app.query_one('#detail-text', Static).render()))
+            self.assertIn('database unavailable', detail_rendered(app))
 
     async def test_summary_health_activity_empty_resize_and_help(self):
         app = self.app([project_state('one', 'One', [issue(), issue('bd-2', status='in_progress', _ready=False), issue('bd-3', _ready=False, _blocked=True), issue('bd-4', status='closed', _ready=False)])])
@@ -159,7 +245,7 @@ class DashboardTests(unittest.IsolatedAsyncioTestCase):
             self.monitor.on_update()
             await pilot.pause()
             self.assertEqual(app.selected_identity, ('one', 'bd-1'))
-            self.assertNotIn('Second', str(app.query_one('#detail-text', Static).render()))
+            self.assertNotIn('Second', detail_rendered(app))
 
     async def test_background_update_preserves_filter_draft(self):
         app = self.app()
@@ -191,7 +277,7 @@ class DashboardTests(unittest.IsolatedAsyncioTestCase):
             self.monitor.on_update()
             await pilot.pause()
             self.assertEqual(self.monitor.detail_calls, 2)
-            self.assertIn('Live update', str(app.query_one('#detail-text', Static).render()))
+            self.assertIn('Live update', detail_rendered(app))
             self.assertEqual(app.query_one('#detail').scroll_y, position)
 
     async def test_tab_shift_tab_and_keyboard_project_selector(self):
